@@ -7,4 +7,5 @@ config_vars:
   PATH: /app/bin:/app/vendor/nginx/sbin:/app/vendor/php/bin:/app/vendor/php/sbin:/usr/local/bin:/usr/bin:/bin
 default_process_types:
   web: bin/run
+  worker: while true; do cd ~/www/ && ~/app/vendor/bin/php worker/index.php; sleep 5; done
 EOF
