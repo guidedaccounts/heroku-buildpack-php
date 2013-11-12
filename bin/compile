@@ -148,10 +148,6 @@ function package_framework() {
     jq --raw-output '.extra.heroku.framework // ""' < "$BUILD_DIR/composer.json"
 }
 
-function package_nginx_version() {
-    jq --raw-output ".extra.heroku.engines.nginx // \"default\"" < "$BUILD_DIR/composer.json"
-}
-
 function package_php_version() {
     jq --raw-output ".extra.heroku.engines.php // \"default\"" < "$BUILD_DIR/composer.json"
 }
@@ -162,10 +158,6 @@ function package_php_config() {
 
 function package_php_includes() {
     jq --raw-output '.extra.heroku["php-includes"] // [] | .[]' < "$BUILD_DIR/composer.json"
-}
-
-function package_nginx_includes() {
-    jq --raw-output '.extra.heroku["nginx-includes"] // [] | .[]' < "$BUILD_DIR/composer.json"
 }
 
 function package_compile_cmd() {
@@ -188,10 +180,8 @@ curl "http://${S3_BUCKET}.s3.amazonaws.com/jq/jq" -L -s -o - > "$HOME/bin/jq"
 chmod +x "$HOME/bin/jq"
 
 DEFAULT_PHP="5.5.5"
-DEFAULT_NGINX="1.4.3"
 
 AVAILABLE_PHP_VERSIONS=$(curl "http://${S3_BUCKET}.s3.amazonaws.com/manifest.php" 2> /dev/null)
-AVAILABLE_NGINX_VERSIONS=$(curl "http://${S3_BUCKET}.s3.amazonaws.com/manifest.nginx" 2> /dev/null)
 
 MCRYPT_VERSION="2.5.8"
 PHP_VERSION="default"
@@ -202,29 +192,23 @@ FRAMEWORK=
 PHP_EXTRA_CONFIG=
 PHP_INCLUDES=
 COMPILE_CMD=
-NGINX_INCLUDES=
 NEWRELIC_VERSION=4.0.5.18
 
 # Read config variables from composer.json if it exists
 if [ -f "$BUILD_DIR/composer.json" ]; then
     PHP_VERSION=$(package_php_version)
-    NGINX_VERSION=$(package_nginx_version)
     DOCUMENT_ROOT=$(package_document_root)
     INDEX_DOCUMENT=$(package_index_file)
     FRAMEWORK=$(package_framework)
     PHP_EXTRA_CONFIG=$(package_php_config)
     PHP_INCLUDES=$(package_php_includes)
     COMPILE_CMD=$(package_compile_cmd)
-    NGINX_INCLUDES=$(package_nginx_includes)
 fi
 
 if [ "$PHP_VERSION" = "default" ]; then
     PHP_VERSION="$DEFAULT_PHP"
 fi
 
-if [ "$NGINX_VERSION" = "default" ]; then
-    NGINX_VERSION="$DEFAULT_NGINX"
-fi
 
 # Look for ".*" versions, match them against all available versions
 # and select the latest version which was found.
@@ -232,17 +216,11 @@ if echo "$PHP_VERSION" | grep '\*' &>/dev/null; then
     PHP_VERSION=$(echo "$AVAILABLE_PHP_VERSIONS" | grep "^$PHP_VERSION$" | sort -r | head -n1)
 fi
 
-if echo "$NGINX_VERSION" | grep '\*' &>/dev/null; then
-    NGINX_VERSION=$(echo "$AVAILABLE_NGINX_VERSIONS" | grep "^$NGINX_VERSION$" | sort -r | head -n1)
-fi
 
-VENDORED_NGINX=/app/vendor/nginx
 VENDORED_PHP=/app/vendor/php
 
 [ ! -d "$BUILD_DIR/vendor" ] && mkdir -p "$BUILD_DIR/vendor"
 
-echo "-----> Bundling NGINX ${NGINX_VERSION}"
-fetch_engine_package nginx "$NGINX_VERSION" /app/vendor/nginx | indent
 
 echo "-----> Bundling PHP ${PHP_VERSION}"
 
@@ -256,7 +234,7 @@ fetch_engine_package php "$PHP_VERSION" /app/vendor/php | indent
 test ! -d ".profile.d" && mkdir -p .profile.d || true
 
 cat > ".profile.d/php.sh" <<SH
-export PATH=/sbin:/bin:/usr/sbin:/usr/bin:/app/bin:/app/vendor/nginx/sbin:/app/vendor/php/sbin:/app/vendor/php/bin:/app/vendor/bin:\$PATH
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin:/app/bin:/app/vendor/php/sbin:/app/vendor/php/bin:/app/vendor/bin:\$PATH
 SH
 
 source ".profile.d/php.sh"
@@ -273,12 +251,10 @@ if [ -f "$BUILD_DIR/composer.json" ] && package_newrelic_enabled; then
 fi
 
 if [ -n "$BUILDPACK_DEBUG" ]; then
-    ls -R vendor/nginx
     ls -R vendor/php
 fi
 
 mkdir -p "conf"
-cp "$basedir/../conf/nginx/base.conf.erb" "conf/nginx.conf.erb"
 cp "$basedir/../conf/php/php-fpm.conf" "/app/vendor/php/etc/php-fpm.conf"
 cp "$basedir/../conf/php/php.ini" "/app/vendor/php/etc/php.ini"
 
@@ -327,7 +303,6 @@ fi
 echo "-----> Vendoring binaries into slug"
 mv /app/vendor/libmcrypt vendor/libmcrypt
 mv /app/vendor/libicu vendor/libicu
-mv /app/vendor/nginx vendor/nginx
 mv /app/vendor/php vendor/php
 
 mkdir -p "bin"
@@ -345,37 +320,26 @@ done
 
 export DOCUMENT_ROOT="$DOCUMENT_ROOT"
 export INDEX_DOCUMENT="$INDEX_DOCUMENT"
-export NGINX_INCLUDES="$NGINX_INCLUDES"
 
 if [ -n "\$NEW_RELIC_LICENSE_KEY" ]; then
     echo "newrelic.license=\"\$NEW_RELIC_LICENSE_KEY\"" > /app/vendor/php/etc/conf.d/newrelic_license.ini
 fi
 
-erb conf/nginx.conf.erb > /app/vendor/nginx/conf/nginx.conf
-erb conf/site.conf.erb > /app/vendor/nginx/conf/site.conf
 
-mkdir -p /app/vendor/nginx/logs
 mkdir -p /app/vendor/php/var/log
 mkdir -p /app/vendor/php/run
 
-touch /app/vendor/nginx/logs/access.log \
-      /app/vendor/nginx/logs/error.log
 
 touch /app/vendor/php/var/log/error.log
 
 (
-    tail -qF -n 0 /app/vendor/nginx/logs/access.log /app/vendor/nginx/logs/error.log /app/vendor/php/var/log/*.log
+    tail -qF -n 0 /app/vendor/php/var/log/*.log
     \$pmsgr < "tail"
 )&
 
 (
     php-fpm -p "/app/vendor/php"
     \$pmsgr < "php-fpm"
-)&
-
-(
-    nginx -p "/app/vendor/nginx" -c /app/vendor/nginx/conf/nginx.conf
-    \$pmsgr < "nginx"
 )&
 
 read exitproc <\$pmsgr
