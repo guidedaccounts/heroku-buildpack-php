@@ -185,7 +185,6 @@ AVAILABLE_PHP_VERSIONS=$(curl "http://${S3_BUCKET}.s3.amazonaws.com/manifest.php
 
 MCRYPT_VERSION="2.5.8"
 PHP_VERSION="default"
-NGINX_VERSION="default"
 DOCUMENT_ROOT=
 INDEX_DOCUMENT="index.php"
 FRAMEWORK=
