@@ -41,32 +41,5 @@ http {
         <% end %>
     }
     
-    error_page 404 /error/404; 
-	error_page 500 502 503 504 /error;
-	
-	#root /<%= ENV['DOCUMENT_ROOT'] %>;
-	
-	
-	proxy_buffer_size 128k;
-	proxy_buffers 4 256k;
-	proxy_busy_buffers_size 256k;
-	
-	location ~ .php {
-	    include fastcgi_params;
-	    fastcgi_index index.php;
-	    fastcgi_param  SCRIPT_FILENAME    $document_root$fastcgi_script_name;
-	    fastcgi_pass unix:/tmp/php-fpm.sock;
-	    fastcgi_buffers 4 256k;
-	    fastcgi_buffer_size 128k;
-	    fastcgi_busy_buffers_size 256k;
-	    
-	}
-	
-	
-	location / { 
-		if (!-e $request_filename){ 
-			rewrite ^(.*)$ /index.php last; break;
-		} 
-	}
 
 }
